@@ -74,18 +74,28 @@ jobs:
     name: "RPM build"
 
     steps:
-
-    # Required so that the checkout action uses git protocol rather than the GitHub REST API.
-    # make rpm requires the FR directory to be a git repository.
-    - name: Install recent git for CentOS 7
-      if: ${{ matrix.env.NAME == 'centos-7' }}
+    - name: Extra repos for CentOS and Rocky Linux
       run: |
-        yum install -y https://packages.endpointdev.com/rhel/7/os/x86_64/git-core-2.24.1-1.ep7.x86_64.rpm
+        echo '[ltb-project]'                                              >  /etc/yum.repos.d/ltb-project.repo
+        echo 'name=LTB project packages'                                  >> /etc/yum.repos.d/ltb-project.repo
+        echo 'baseurl=https://ltb-project.org/rpm/$releasever/$basearch'  >> /etc/yum.repos.d/ltb-project.repo
+        echo 'enabled=1'                                                  >> /etc/yum.repos.d/ltb-project.repo
+        echo 'gpgcheck=1'                                                 >> /etc/yum.repos.d/ltb-project.repo
+        echo 'gpgkey=https://www.ltb-project.org/documentation/_static/RPM-GPG-KEY-LTB-project' >> /etc/yum.repos.d/ltb-project.repo
+        rpm --import https://www.ltb-project.org/documentation/_static/RPM-GPG-KEY-LTB-project
+        yum install -y epel-release
 
-    - name: Install distro git for CentOS > 7
-      if: ${{ matrix.env.NAME != 'centos-7' }}
+    - name: Enable PowerTools on CentOS 8
+      if: ${{ matrix.env.NAME == 'stream-8' || matrix.env.NAME == 'rocky-8' }}
       run: |
-        yum install -y git-core
+        yum config-manager --enable PowerTools || :
+        yum config-manager --enable powertools || :
+
+    # For pkill
+    - name: Enable procps-ng on CentOS 8
+      if: ${{ matrix.env.NAME == 'stream-8' || matrix.env.NAME == 'rocky-8' }}
+      run: |
+        yum install -y procps-ng
 
     - name: Set up NetworkRADIUS extras repository
       run: |
@@ -109,32 +119,28 @@ jobs:
         rm -f /etc/yum.repos.d/CentOS-SCLo-scl-rh.repo
         rm -f /etc/yum.repos.d/CentOS-SCLo-scl.repo
 
+    # Required so that the checkout action uses git protocol rather than the GitHub REST API.
+    # make rpm requires the FR directory to be a git repository.
+
+    # Centos 7 installs an extremely old version of Git.  This version of git's archive
+    # command is missing --add-file and --add-virtual-file so cannot be used for creating
+    # tarballs.  Here we install a more modern version from a 3rd party repo listed on the
+    # git website.
+    - name: Install recent git for CentOS 7
+      if: ${{ matrix.env.NAME == 'centos-7' }}
+      run: |
+        yum remove git
+        rpm -U https://repo.ius.io/ius-release-el7.rpm
+        yum install -y git2*-core
+
+    - name: Install distro git for CentOS > 7
+      if: ${{ matrix.env.NAME != 'centos-7' }}
+      run: |
+        yum install -y git-core
+
     - uses: actions/checkout@v3
       with:
         path: freeradius
-
-    - name: Extra repos for CentOS and Rocky Linux
-      run: |
-        echo '[ltb-project]'                                              >  /etc/yum.repos.d/ltb-project.repo
-        echo 'name=LTB project packages'                                  >> /etc/yum.repos.d/ltb-project.repo
-        echo 'baseurl=https://ltb-project.org/rpm/$releasever/$basearch'  >> /etc/yum.repos.d/ltb-project.repo
-        echo 'enabled=1'                                                  >> /etc/yum.repos.d/ltb-project.repo
-        echo 'gpgcheck=1'                                                 >> /etc/yum.repos.d/ltb-project.repo
-        echo 'gpgkey=https://www.ltb-project.org/documentation/_static/RPM-GPG-KEY-LTB-project' >> /etc/yum.repos.d/ltb-project.repo
-        rpm --import https://www.ltb-project.org/documentation/_static/RPM-GPG-KEY-LTB-project
-        yum install -y epel-release
-
-    - name: Enable PowerTools on CentOS 8
-      if: ${{ matrix.env.NAME == 'stream-8' || matrix.env.NAME == 'rocky-8' }}
-      run: |
-        yum config-manager --enable PowerTools || :
-        yum config-manager --enable powertools || :
-
-    # For pkill
-    - name: Enable procps-ng on CentOS 8
-      if: ${{ matrix.env.NAME == 'stream-8' || matrix.env.NAME == 'rocky-8' }}
-      run: |
-        yum install -y procps-ng
 
     #
     #  It has been observed that sometimes not all the dependencies are
