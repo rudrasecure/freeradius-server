@@ -770,8 +770,8 @@ static rlm_rcode_t CC_HINT(nonnull) mod_authorize(void *instance, REQUEST *reque
 
 	if (strcmp(inst->counter_type, "data") == 0)
 	{
-		// treated as data. Session-Timeout will be small. Hence multipled by 1000000
-		reply_item->vp_integer64 = unused * 1000000;
+		// treated as data. Session-Timeout will 1000000
+		reply_item->vp_integer64 = 1000000;
 	}
 	else
 	{
