@@ -75,6 +75,8 @@ typedef struct rlm_sqlcounter_t
 	DICT_ATTR const *key_attr;	 //!< Attribute number for key field.
 	DICT_ATTR const *dict_attr;	 //!< Attribute number for the counter.
 	DICT_ATTR const *reply_attr; //!< Attribute number for the reply.
+
+	char const *counter_type; //!< Type of counter. 'data' or 'time'.
 } rlm_sqlcounter_t;
 
 /*
@@ -104,6 +106,9 @@ static const CONF_PARSER module_config[] = {
 
 	{"reply-name", FR_CONF_OFFSET(PW_TYPE_STRING | PW_TYPE_DEPRECATED, rlm_sqlcounter_t, reply_name), NULL},
 	{"reply_name", FR_CONF_OFFSET(PW_TYPE_STRING | PW_TYPE_ATTRIBUTE, rlm_sqlcounter_t, reply_name), "Session-Timeout"},
+
+	{"counter_type", FR_CONF_OFFSET(PW_TYPE_STRING, rlm_sqlcounter_t, counter_type), "time"},
+
 	CONF_PARSER_TERMINATOR};
 
 static int find_next_reset(rlm_sqlcounter_t *inst, REQUEST *request, time_t timeval)
@@ -300,6 +305,20 @@ static int find_prev_reset(rlm_sqlcounter_t *inst, time_t timeval)
 	}
 
 	return ret;
+}
+
+/*
+ * Check if the counter type is valid
+ * valid counter types are "data" and "time"
+ */
+static bool is_counter_type_valid(rlm_sqlcounter_t *inst)
+{
+	rad_assert(inst->counter_type != NULL);
+	if (strcmp(inst->counter_type, "data") == 0 || strcmp(inst->counter_type, "time") == 0)
+	{
+		return true;
+	}
+	return false;
 }
 
 /*
@@ -577,6 +596,12 @@ static int mod_instantiate(CONF_SECTION *conf, void *instance)
 		return -1;
 	}
 
+	if (!is_counter_type_valid(inst))
+	{
+		cf_log_err_cs(conf, "Invalid counter type '%s'", inst->counter_type);
+		return -1;
+	}
+
 	return 0;
 }
 
@@ -742,7 +767,18 @@ static rlm_rcode_t CC_HINT(nonnull) mod_authorize(void *instance, REQUEST *reque
 		reply_item = radius_pair_create(request->reply, &request->reply->vps, inst->reply_attr->attr,
 										inst->reply_attr->vendor);
 	}
-	reply_item->vp_integer64 = unused;
+
+	if (strcmp(inst->counter_type, "data") == 0)
+	{
+		// treated as data. Session-Timeout will be small. Hence multipled by 1000000
+		reply_item->vp_integer64 = unused * 1000000;
+	}
+	else
+	{
+		// treated as time. Session-Timeout is in seconds
+		reply_item->vp_integer64 = unused;
+	}
+	
 
 	RDEBUG2("Setting &reply:%s value to %" PRIu64, inst->reply_name, reply_item->vp_integer64);
 
